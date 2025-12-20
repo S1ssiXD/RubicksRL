@@ -123,6 +123,7 @@ def solve_cube_with_value_function(cube: Cube, value_function: ValueFunction, ma
 def solve_from_dataset(cube: Cube, dataset: CubeDataset) -> Solution:
     """
     Solve the cube using a dataset of known cubes and their optimal value.
+    Only works if the cube is directly in the dataset, and the dataset contains the full path to the solution.
 
     Args:
         cube (Cube): The Cube object to solve.
@@ -358,87 +359,48 @@ class BFSSolverSimilarDataset:
         return None
 
 
-class WeightedAStarSolver:
+class AStarSolver:
     """
-    A solver that uses the A* algorithm with a given value function to find a solution.
-    If the value function is perfect, this will find the optimal solution, otherwise it might find a suboptimal solution.
+    A unified A* solver with optional features including weighting, noise injection, and random restarts.
+
+    Features:
+    - Standard A*: weight=1.0, noise=0.0, max_restarts=0
+    - Weighted A*: weight > 1.0 makes search more greedy
+    - Noisy A*: noise > 0.0 adds random perturbations to exploration
+    - Restarting A*: max_restarts > 0 tries from different random starting positions
     """
 
-    def __init__(self, value_function: ValueFunction, weight: float = 1.0, max_moves: int = 40, max_queue_size: int = 1000, t_max: float = 60):
+    def __init__(self,
+                 value_function: ValueFunction,
+                 weight: float = 1.0,
+                 noise: float = 0.0,
+                 max_moves: int = 40,
+                 max_queue_size: int = 1000,
+                 t_max: float = 60,
+                 max_restarts: int = 0,
+                 restart_sequence_length: int = 3,
+                 batch_size: int = 1,
+                 seed: Optional[int] = None):
         """
         Initializes the AStarSolver.
 
         Args:
-            value_function (ValueFunction): A function that takes a Cube and returns a value (e.g. the estimated number of moves to solve it).
-            weight (float): The weight to apply to the cost so far. Higher values make the search more greedy. Default is 1.0 (standard A*).
+            value_function (ValueFunction): A function that takes a Cube and returns a value 
+                (e.g. the estimated number of moves to solve it).
+            weight (float): The weight to apply to the cost so far. Higher values make the search 
+                more greedy. Default is 1.0 (standard A*).
+            noise (float): Standard deviation of Gaussian noise to add to cost estimates. 
+                Default is 0.0 (no noise).
             max_moves (int): The maximum number of moves to search for a solution.
             max_queue_size (int): The maximum size of the priority queue to prevent memory issues.
-            t_max (float): The maximum time to search for a solution in seconds.
-        """
-        self._value_function = value_function
-        self._weight = weight
-        self._max_moves = max_moves
-        self._max_queue_size = max_queue_size
-        self._t_max = t_max
-
-    def __call__(self, cube: Cube) -> Solution:
-        start_time = time.time()
-
-        sol = []
-        if cube.is_solved():
-            return sol
-
-        # Priority queue: each entry is (estimated_total_cost, cost_so_far, counter, cube, moves_to_here)
-        queue = []
-        # To avoid comparison of Cube objects in heapq (break ties)
-        counter = 0
-        heapq.heappush(queue, (self._value_function(cube),
-                       0, counter, cube.copy(), []))
-        visited = {cube.copy(): 0}  # Store seen cubes with their cost
-
-        while queue and len(queue) <= self._max_queue_size and time.time() - start_time < self._t_max:
-            _, cost_so_far, _, current_cube, path = heapq.heappop(
-                queue)
-
-            if current_cube.is_solved():
-                return path
-
-            if cost_so_far >= self._max_moves:
-                continue
-
-            new_cost = cost_so_far + 1
-            neighbors = current_cube.get_all_neighbors()
-            neighbors_values = self._value_function(neighbors)
-            for i in range(len(neighbors)):
-
-                if neighbors[i] in visited and visited[neighbors[i]] <= new_cost:
-                    continue
-
-                visited[neighbors[i]] = new_cost
-                estimated_cost = self._weight * new_cost + neighbors_values[i]
-                new_path = path + [moves[i]]
-                counter += 1
-                heapq.heappush(
-                    queue, (estimated_cost, new_cost, counter, neighbors[i], new_path))
-        return None
-
-
-class NoisyWeightedAStarSolver:
-    """
-    A solver that uses the A* algorithm with a given value function to find a solution.
-    If the value function is perfect, this will find the optimal solution, otherwise it might find a suboptimal solution.
-    """
-
-    def __init__(self, value_function: ValueFunction, weight: float = 1.0, noise: float = 0.5, max_moves: int = 40, max_queue_size: int = 1000, t_max: float = 60, seed: Optional[int] = None):
-        """
-        Initializes the AStarSolver.
-
-        Args:
-            value_function (ValueFunction): A function that takes a Cube and returns a value (e.g. the estimated number of moves to solve it).
-            weight (float): The weight to apply to the cost so far. Higher values make the search more greedy. Default is 1.0 (standard A*).
-            max_moves (int): The maximum number of moves to search for a solution.
-            max_queue_size (int): The maximum size of the priority queue to prevent memory issues.
-            t_max (float): The maximum time to search for a solution in seconds.
+            t_max (float): The maximum time to search for a solution in seconds. 
+                If max_restarts > 0, this is the time per attempt.
+            max_restarts (int): The maximum number of restart attempts from random positions. 
+                Default is 0 (no restarts).
+            restart_sequence_length (int): The length of random move sequences to apply when restarting.
+            batch_size (int): The number of cubes to pop and process in parallel from the priority queue. 
+                Default is 1 (no batching).
+            seed (Optional[int]): Random seed for deterministic noise generation. Only used if noise > 0.
         """
         self._value_function = value_function
         self._weight = weight
@@ -446,86 +408,14 @@ class NoisyWeightedAStarSolver:
         self._max_moves = max_moves
         self._max_queue_size = max_queue_size
         self._t_max = t_max
-        self._seed = seed
-
-    def __call__(self, cube: Cube) -> Solution:
-        start_time = time.time()
-
-        if self._seed is not None:
-            np.random.seed(self._seed)
-
-        sol = []
-        if cube.is_solved():
-            return sol
-
-        # Priority queue: each entry is (estimated_total_cost, cost_so_far, counter, cube, moves_to_here)
-        queue = []
-        # To avoid comparison of Cube objects in heapq (break ties)
-        counter = 0
-        heapq.heappush(queue, (self._value_function(cube),
-                       0, counter, cube.copy(), []))
-        visited = {cube.copy(): 0}  # Store seen cubes with their cost
-
-        while queue and len(queue) <= self._max_queue_size and time.time() - start_time < self._t_max:
-            _, cost_so_far, _, current_cube, path = heapq.heappop(
-                queue)
-
-            if current_cube.is_solved():
-                return path
-
-            if cost_so_far >= self._max_moves:
-                continue
-
-            new_cost = cost_so_far + 1
-            neighbors = current_cube.get_all_neighbors()
-            neighbors_values = self._value_function(neighbors)
-            for i in range(len(neighbors)):
-
-                if neighbors[i] in visited and visited[neighbors[i]] <= new_cost:
-                    continue
-
-                visited[neighbors[i]] = new_cost
-                estimated_cost = self._weight * new_cost + \
-                    neighbors_values[i] + np.random.normal(0, self._noise)
-                new_path = path + [moves[i]]
-                counter += 1
-                heapq.heappush(
-                    queue, (estimated_cost, new_cost, counter, neighbors[i], new_path))
-        return None
-
-
-class RestartingWeightedAStarSolver:
-    """
-    A solver that uses the Weighted A* algorithm, but if it fails or times out, 
-    it tries again from a different initial state by applying random move sequences.
-    """
-
-    def __init__(self, value_function: ValueFunction, weight: float = 1.0, max_moves: int = 40,
-                 max_queue_size: int = 1000, t_max_per_attempt: float = 10,
-                 max_restarts: int = 5, restart_sequence_length: int = 3):
-        """
-        Initializes the RestartingWeightedAStarSolver.
-
-        Args:
-            value_function (ValueFunction): A function that takes a Cube and returns a value.
-            weight (float): The weight to apply to the cost so far. Higher values make the search more greedy.
-            max_moves (int): The maximum number of moves to search for a solution.
-            max_queue_size (int): The maximum size of the priority queue.
-            t_max_per_attempt (float): The maximum time per A* attempt in seconds.
-            max_restarts (int): The maximum number of restart attempts.
-            restart_sequence_length (int): The length of random move sequences to apply when restarting.
-        """
-        self._value_function = value_function
-        self._weight = weight
-        self._max_moves = max_moves
-        self._max_queue_size = max_queue_size
-        self._t_max_per_attempt = t_max_per_attempt
         self._max_restarts = max_restarts
         self._restart_sequence_length = restart_sequence_length
+        self._batch_size = batch_size
+        self._seed = seed
 
-    def _run_weighted_astar(self, cube: Cube, prefix_moves: List[Move]) -> Solution:
+    def _run_astar_attempt(self, cube: Cube, prefix_moves: List[Move], t_max_attempt: float) -> Solution:
         """
-        Run the Weighted A* algorithm from a given cube state.
+        Run a single A* search attempt from a given cube state.
 
         Args:
             cube (Cube): The starting cube state.
@@ -539,42 +429,88 @@ class RestartingWeightedAStarSolver:
         if cube.is_solved():
             return prefix_moves
 
+        # Initialize random seed if noise is enabled
+        if self._noise > 0 and self._seed is not None:
+            cube_seed = (self._seed + hash(cube)) % (2**31)
+            np.random.seed(cube_seed)
+
         # Priority queue: (estimated_total_cost, cost_so_far, counter, cube, moves_to_here)
         queue = []
         counter = 0
-        heapq.heappush(queue, (self._value_function(cube), 0,
-                       counter, cube.copy(), prefix_moves))
+
+        initial_cost = self._value_function(cube)
+        heapq.heappush(queue, (initial_cost, 0, counter,
+                       cube.copy(), prefix_moves))
         visited = {cube.copy(): 0}
 
-        while queue and len(queue) <= self._max_queue_size and time.time() - start_time < self._t_max_per_attempt:
-            _, cost_so_far, _, current_cube, path = heapq.heappop(queue)
+        while queue and len(queue) <= self._max_queue_size and time.time() - start_time < t_max_attempt:
+            # Pop batch_size cubes from the queue
+            batch_items = []
+            for _ in range(min(self._batch_size, len(queue))):
+                if not queue:
+                    break
+                batch_items.append(heapq.heappop(queue))
 
-            if current_cube.is_solved():
-                return path
+            # Process each cube in the batch
+            batch_cubes = []
+            batch_metadata = []
 
-            if cost_so_far >= self._max_moves:
-                continue
+            for _, cost_so_far, _, current_cube, path in batch_items:
+                if current_cube.is_solved():
+                    return path
 
-            new_cost = cost_so_far + 1
-            neighbors = current_cube.get_all_neighbors()
-            neighbors_values = self._value_function(neighbors)
-
-            for i in range(len(neighbors)):
-                if neighbors[i] in visited and visited[neighbors[i]] <= new_cost:
+                if cost_so_far >= self._max_moves:
                     continue
 
-                visited[neighbors[i]] = new_cost
-                estimated_cost = self._weight * new_cost + neighbors_values[i]
-                new_path = path + [moves[i]]
-                counter += 1
-                heapq.heappush(queue, (estimated_cost, new_cost,
-                               counter, neighbors[i], new_path))
+                batch_cubes.append(current_cube)
+                batch_metadata.append((cost_so_far, path))
+
+            # If no valid cubes to process, continue
+            if not batch_cubes:
+                continue
+
+            # Get all neighbors for all cubes in batch
+            all_neighbors = []
+            all_neighbor_metadata = []
+
+            for cube_idx, current_cube in enumerate(batch_cubes):
+                cost_so_far, path = batch_metadata[cube_idx]
+                new_cost = cost_so_far + 1
+                neighbors = current_cube.get_all_neighbors()
+
+                for neighbor in neighbors:
+                    all_neighbors.append(neighbor)
+                    all_neighbor_metadata.append((new_cost, path, neighbor))
+
+            # Batch evaluate all neighbors at once
+            if all_neighbors:
+                neighbors_values = self._value_function(all_neighbors)
+
+                # Process results and add to queue
+                for i, (new_cost, path, neighbor) in enumerate(all_neighbor_metadata):
+                    if neighbor in visited and visited[neighbor] <= new_cost:
+                        continue
+
+                    visited[neighbor] = new_cost
+
+                    # Calculate estimated cost with optional noise
+                    estimated_cost = self._weight * \
+                        new_cost + neighbors_values[i]
+                    if self._noise > 0:
+                        estimated_cost += np.random.normal(0, self._noise)
+
+                    # Find which move was used
+                    move_idx = i % len(moves)
+                    new_path = path + [moves[move_idx]]
+                    counter += 1
+                    heapq.heappush(queue, (estimated_cost, new_cost,
+                                   counter, neighbor, new_path))
 
         return None
 
     def __call__(self, cube: Cube) -> Solution:
         """
-        Solve the cube using Weighted A* with restarts from random positions.
+        Solve the cube using A* with optional restarts.
 
         Args:
             cube (Cube): The cube to solve.
@@ -582,25 +518,32 @@ class RestartingWeightedAStarSolver:
         Returns:
             Solution: The solution if found, None otherwise.
         """
+        t_start = time.time()
+        if cube.is_solved():
+            return []
+
         # First attempt: try from the original cube state
-        solution = self._run_weighted_astar(cube.copy(), [])
+        t_max_attempt = self._t_max / (self._max_restarts + 1)
+        solution = self._run_astar_attempt(cube.copy(), [], t_max_attempt)
         if solution is not None:
             return solution
 
-        # If first attempt failed, try from different starting points
-        for restart_idx in range(self._max_restarts):
-            # Generate a random move sequence
-            random_sequence = [moves[np.random.randint(0, len(moves))]
-                               for _ in range(self._restart_sequence_length)]
+        # If restarts are disabled or first attempt succeeded, return
+        if self._max_restarts == 0:
+            return None
 
-            # Apply the random sequence to get a new starting state
-            new_start_cube = cube.copy()
-            new_start_cube.move(random_sequence)
+        # Try from different starting points
+        for _ in range(self._max_restarts):
+            # Generate a random move sequence
+            new_cube = cube.copy()
+            random_sequence = new_cube.scramble(self._restart_sequence_length)
 
             # Try solving from this new state
-            # The solution should include the random sequence at the beginning
-            solution = self._run_weighted_astar(
-                new_start_cube, random_sequence)
+            t_now = time.time()
+            t_max_attempt = min(self._t_max / (self._max_restarts + 1),
+                                self._t_max - (t_now - t_start))
+            solution = self._run_astar_attempt(
+                new_cube, random_sequence, t_max_attempt)
 
             if solution is not None:
                 return solution
