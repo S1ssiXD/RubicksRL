@@ -178,7 +178,7 @@ class Cube:
                 moves.pop(i + 1)
                 moves.append(
                     Move(faces[rng.integers(0, len(faces))], MoveSpecifier(rng.integers(1, 4))))
-                i -= 1
+                i = max(0, i - 1)
 
             # 2. ABA with A and B being opposite faces
             if i < len(moves) - 2 and moves[i].face == moves[i + 2].face and moves[i].face == OPPOSITE_FACES[moves[i + 1].face]:
