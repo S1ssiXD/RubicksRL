@@ -85,12 +85,14 @@ class CubeValueNN(nn.Module, ABC):
     def as_value_function(self) -> ValueFunction:
         """ Converts the neural network model into a value function that can handle both single Cube and list of Cubes. """
         cube_to_tensor = self.get_cube_to_tensor()
+        device = next(self.parameters()).device
 
         if self._nn_value_function_type == NNValueFunctionType.STANDARD:
             def value_function(cube: Cube | List[Cube]) -> np.ndarray:
                 self.eval()
                 with torch.no_grad():
-                    return self(cube_to_tensor(cube)).numpy().squeeze()
+                    tensor = cube_to_tensor(cube).to(device)
+                    return self(tensor).cpu().numpy().squeeze()
 
         else:
             match self._nn_value_function_type:
@@ -117,15 +119,15 @@ class CubeValueNN(nn.Module, ABC):
                 with torch.no_grad():
                     if isinstance(cube, Cube):
                         used_cubes = cube_method(cube)
-                        values = self(cube_to_tensor(
-                            used_cubes)).numpy().squeeze()
+                        tensor = cube_to_tensor(used_cubes).to(device)
+                        values = self(tensor).cpu().numpy().squeeze()
                         return np.array(agg_func(values))
                     else:
                         all_used_cubes = []
                         for c in cube:
                             all_used_cubes.extend(cube_method(c))
-                        all_values = self(cube_to_tensor(
-                            all_used_cubes)).numpy().squeeze()
+                        tensor = cube_to_tensor(all_used_cubes).to(device)
+                        all_values = self(tensor).cpu().numpy().squeeze()
 
                         N = len(cube_method(Cube()))
                         agg_vals = [agg_func(
@@ -240,7 +242,7 @@ class CubeValueNNConv(CubeValueNN):
 
 
 class CubeValueResNet(CubeValueNN):
-    """A simple neural network with residual blocks for cube value estimation (estimated number of moves needed to solve the cube). 
+    """A simple neural network with residual blocks for cube value estimation (estimated number of moves needed to solve the cube).
 
     Uses a one-hot encoded (N, 54, 6) tensor representation of the cube state.
     """
@@ -306,6 +308,59 @@ class CubeValueResNet(CubeValueNN):
         return cube_to_tensor_one_hot
 
 
+class CubeValueResNetV2(CubeValueNN):
+    """A simple neural network with residual blocks for cube value estimation (estimated number of moves needed to solve the cube).
+
+    Uses a one-hot encoded (N, 54, 6) tensor representation of the cube state.
+    """
+
+    def __init__(self):
+        """
+        Initializes the CubeValueResNet model.
+
+        Args:
+            num_blocks (int): Number of residual blocks to use.
+        """
+        super(CubeValueResNetV2, self).__init__()
+
+        self.layers = nn.Sequential(
+            nn.Linear(54 * 6, 1024),
+            nn.BatchNorm1d(1024),
+            nn.ReLU(),
+            nn.Linear(1024, 2048),
+            nn.BatchNorm1d(2048),
+            nn.ReLU(),
+            ResidualBlock(2048),
+            ResidualBlock(2048, layers=3),
+            ResidualBlock(2048),
+            nn.Linear(2048, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Linear(512, 1)
+        )
+
+    def forward(self, cube_tensor: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass of the neural network.
+
+        Args:
+            cube_tensor (torch.Tensor): The tensor representation of the cube state, of shape (N, 54, 6) or (54, 6).
+
+        Returns:
+            torch.Tensor: The output of the neural network.
+        """
+        return self.layers(cube_tensor.flatten(start_dim=1))
+
+    def get_cube_to_tensor(self) -> CubeToTensor:
+        """
+        Returns the cube to tensor conversion function used by the model.
+
+        Returns:
+            CubeToTensor: The cube to tensor conversion function.
+        """
+        return cube_to_tensor_one_hot
+
+
 class CubeValueTransformer(CubeValueNN):
     """A transformer-based neural network with self-attention for cube value estimation.
 
@@ -313,7 +368,7 @@ class CubeValueTransformer(CubeValueNN):
     Each of the 54 stickers is treated as a token with 6-dimensional features (one-hot color).
     """
 
-    def __init__(self, embed_dim: int = 128, num_heads: int = 4, num_layers: int = 3, dim_feedforward: int = 512):
+    def __init__(self, embed_dim: int = 1024, num_heads: int = 16, num_layers: int = 3, dim_feedforward: int = 1024):
         """
         Initializes the CubeValueTransformer model.
 
@@ -344,10 +399,10 @@ class CubeValueTransformer(CubeValueNN):
 
         # Output layers - aggregate sequence and predict value
         self.output_layers = nn.Sequential(
-            nn.Linear(embed_dim, 256),
-            nn.BatchNorm1d(256),
+            nn.Linear(embed_dim, 512),
+            nn.BatchNorm1d(512),
             nn.ReLU(),
-            nn.Linear(256, 64),
+            nn.Linear(512, 64),
             nn.ReLU(),
             nn.Linear(64, 1)
         )
@@ -375,6 +430,127 @@ class CubeValueTransformer(CubeValueNN):
         x = x.mean(dim=1)
 
         # Output prediction: (batch_size, 1)
+        return self.output_layers(x)
+
+    def get_cube_to_tensor(self) -> CubeToTensor:
+        """
+        Returns the cube to tensor conversion function used by the model.
+
+        Returns:
+            CubeToTensor: The cube to tensor conversion function.
+        """
+        return cube_to_tensor_one_hot
+
+
+class AttentionBlock(nn.Module):
+    """An attention-based block."""
+
+    def __init__(self, embed_dim: int, num_heads: int):
+        super(AttentionBlock, self).__init__()
+        self.attn = nn.MultiheadAttention(
+            embed_dim, num_heads, dropout=0.1, batch_first=True)
+        self.norm = nn.LayerNorm(embed_dim)
+        self.feedforward = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim * 4),
+            nn.LayerNorm(embed_dim * 4),
+            nn.ReLU(),
+            nn.Linear(embed_dim * 4, embed_dim),
+            nn.LayerNorm(embed_dim)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Self-attention with residual connection and layer normalization
+        attn_output, _ = self.attn(x, x, x)
+        x = self.norm(x + attn_output)
+        # Feedforward network with residual connection and layer normalization
+        ff_output = self.feedforward(x)
+        x = self.norm(x + ff_output)
+
+        return x
+
+
+class CubeValueTransformerV2(CubeValueNN):
+    """A transformer-based neural network with self-attention for cube value estimation.
+
+    Each of the 54 stickers is a token with 324-dimensional (54*6) one-hot encoding.
+    For each token, exactly one element is 1 (indicating position and color), rest are 0.
+    Positional information is embedded in the token itself rather than learned separately.
+    Uses nn.MultiheadAttention directly instead of nn.TransformerEncoder.
+    """
+
+    def __init__(self):
+        """
+        Initializes the CubeValueTransformerV2 model.
+        """
+        super(CubeValueTransformerV2, self).__init__()
+
+        input_dim: int = 6
+        embed_dim: int = 512
+        forward_skip_dim: int = 512
+        self.pos_encodings = nn.Parameter(torch.randn(1, 54, embed_dim))
+        self.forward_skip = nn.Sequential(
+            nn.Linear(6*54, forward_skip_dim),
+            nn.BatchNorm1d(forward_skip_dim),
+            nn.ReLU(),
+        )
+
+        # Embedding layer
+        self.embedding = nn.Linear(input_dim, embed_dim)
+
+        # Attention blocks
+        self.attention_blocks = nn.Sequential(
+            AttentionBlock(embed_dim, num_heads=4),
+        )
+
+        # Output layers to predict value
+        self.output_layers = nn.Sequential(
+            nn.Linear(embed_dim + forward_skip_dim, 1024),
+            nn.BatchNorm1d(1024),
+            nn.ReLU(),
+            ResidualBlock(1024),
+            ResidualBlock(1024),
+            nn.Linear(1024, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Linear(128, 1)
+        )
+
+    def forward(self, cube_tensor: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass of the neural network.
+
+        Args:
+            cube_tensor (torch.Tensor): The tensor representation of the cube state, of shape (N, 54, 6).
+
+        Returns:
+            torch.Tensor: The output of the neural network, of shape (N, 1).
+        """
+        batch_size = cube_tensor.shape[0]
+
+        # Create 54 tokens, each of dimension 324 (54*6)
+        # For each sticker position i (0-53), create a one-hot vector across all 324 positions
+        # where position i*6 + color_value is set to 1
+
+        # Convert (N, 54, 6) one-hot to (N, 54, 324) tokens
+        # x = torch.zeros((batch_size, 54, 324),
+        #                 dtype=cube_tensor.dtype, device=cube_tensor.device)
+        # for i in range(54):
+        #     x[:, i, i*6:(i+1)*6] = cube_tensor[:, i, :]
+
+        # Apply embedding and attention blocks
+        x = self.embedding(cube_tensor)  # (N, 54, embed_dim)
+        x = x + self.pos_encodings
+        x = self.attention_blocks(x)  # (N, 54, embed_dim)
+
+        # Prepare forward skip connection
+        skip = self.forward_skip(
+            cube_tensor.flatten(start_dim=1))  # (N, forward_skip_dim)
+
+        # Pool over sequence dimension to get (N, embed_dim)
+        x = x.mean(dim=1)  # Average pooling over the 54 tokens
+        x = torch.cat([x, skip], dim=1)  # Concatenate skip connection
+
+        # Apply output layers
         return self.output_layers(x)
 
     def get_cube_to_tensor(self) -> CubeToTensor:
