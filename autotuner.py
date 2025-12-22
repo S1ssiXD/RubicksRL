@@ -18,9 +18,7 @@ def line_search(evaluation_function: Callable[[float], float],
 
     param = low + step
     while param <= high:
-        print(f"Evaluating parameter value: {param}")
         score = evaluation_function(param)
-        print(f"Score at {param}: {score}")
         if score > best_score:
             best_score = score
             best_param_value = param

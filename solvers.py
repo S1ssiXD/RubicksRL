@@ -380,7 +380,8 @@ class AStarSolver:
                  max_restarts: int = 0,
                  restart_sequence_length: int = 3,
                  batch_size: int = 1,
-                 seed: Optional[int] = None):
+                 seed: Optional[int] = None,
+                 dataset_moves: Optional[int] = None):
         """
         Initializes the AStarSolver.
 
@@ -401,6 +402,7 @@ class AStarSolver:
             batch_size (int): The number of cubes to pop and process in parallel from the priority queue. 
                 Default is 1 (no batching).
             seed (Optional[int]): Random seed for deterministic noise generation. Only used if noise > 0.
+            dataset_moves (Optional[int]): If provided, loads a dataset of optimal values for cubes up to this number of moves.
         """
         self._value_function = value_function
         self._weight = weight
@@ -412,6 +414,8 @@ class AStarSolver:
         self._restart_sequence_length = restart_sequence_length
         self._batch_size = batch_size
         self._seed = seed
+        self._dataset_moves = dataset_moves if dataset_moves is not None else 0
+        self._dataset = get_full_optimal_value_dataset(self._dataset_moves)
 
     def _run_astar_attempt(self, cube: Cube, prefix_moves: List[Move], t_max_attempt: float) -> Solution:
         """
@@ -478,9 +482,16 @@ class AStarSolver:
                 new_cost = cost_so_far + 1
                 neighbors = current_cube.get_all_neighbors()
 
-                for neighbor in neighbors:
-                    all_neighbors.append(neighbor)
-                    all_neighbor_metadata.append((new_cost, path, neighbor))
+                for i, neighbor in enumerate(neighbors):
+                    # Check if neighbor is in dataset and can lead to solution
+                    if neighbor in self._dataset:
+                        solution = solve_from_dataset(neighbor, self._dataset)
+                        if solution is not None:
+                            return path + [moves[i]] + solution
+                    if new_cost < self._max_moves - self._dataset_moves:
+                        all_neighbors.append(neighbor)
+                        all_neighbor_metadata.append(
+                            (new_cost, path, neighbor))
 
             # Batch evaluate all neighbors at once
             if all_neighbors:

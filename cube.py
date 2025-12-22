@@ -161,10 +161,9 @@ class Cube:
         for face_id in range(6):
             self._cube[face_id, :, :] = face_id
 
-    def scramble(self, n_moves: int, seed: Optional[int] = None) -> List[Move]:
-        """Scramble the cube with a list of moves or a number of random moves. \n
-        Returns the list of moves performed.
-        """
+    @staticmethod
+    def generate_scramble_sequence(n_moves: int, seed: Optional[int] = None) -> List[Move]:
+        """Generate a scramble sequence of n_moves."""
         rng = np.random.default_rng(seed)
         faces: List[Face] = list(Face)
         moves = [Move(faces[rng.integers(0, len(faces))], MoveSpecifier(
@@ -179,6 +178,7 @@ class Cube:
                 moves.append(
                     Move(faces[rng.integers(0, len(faces))], MoveSpecifier(rng.integers(1, 4))))
                 i = max(0, i - 1)
+                continue
 
             # 2. ABA with A and B being opposite faces
             if i < len(moves) - 2 and moves[i].face == moves[i + 2].face and moves[i].face == OPPOSITE_FACES[moves[i + 1].face]:
@@ -188,9 +188,14 @@ class Cube:
                 i -= 1
             i += 1
 
-        for move in moves:
-            self.move(move)
+        return moves
 
+    def scramble(self, n_moves: int, seed: Optional[int] = None) -> List[Move]:
+        """Scramble the cube with a list of moves or a number of random moves. \n
+        Returns the list of moves performed.
+        """
+        moves = Cube.generate_scramble_sequence(n_moves, seed)
+        self.move(moves)
         return moves
 
     def is_solved(self) -> bool:
@@ -575,16 +580,8 @@ class Cube:
 
 def main():
     c = Cube()
-
-    # moves = [
-    #     Move(Face.FRONT, MoveSpecifier.CLOCKWISE),
-    #     Move(Face.LEFT, MoveSpecifier.CLOCKWISE),
-    #     Move(Face.UP, MoveSpecifier.HALF_TURN),
-    # ]
-    # c.scramble(moves)
     c.scramble(20)
     print(c)
-    # c.plot()
     c.plot_3d()
 
 

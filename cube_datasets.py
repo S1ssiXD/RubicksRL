@@ -372,7 +372,7 @@ class TrainingValueDataset(Dataset):
                 "Either dataset or (inputs, targets) must be provided")
 
     @classmethod
-    def create_from_trajectories(cls, cube_to_tensor: CubeToTensor, n_trajectories: int = 1000, n_moves: int = 20, seed: Optional[int] = None, device="cpu") -> "TrainingValueDataset":
+    def create_from_trajectories(cls, cube_to_tensor: CubeToTensor, n_trajectories: int = 1000, n_moves: int = 20, seed: Optional[int] = None, device="cpu", tqdm_position: int = 0) -> "TrainingValueDataset":
         """Create dataset from random scramble trajectories.
 
         For each of N trajectories, generates a random scramble with M moves and adds
@@ -386,6 +386,7 @@ class TrainingValueDataset(Dataset):
             n_moves: Number of scramble moves per trajectory
             seed: Random seed for reproducibility
             device: Device to store tensors ('cpu' or 'cuda')
+            tqdm_position: Position for tqdm progress bar (for parallel execution)
 
         Returns:
             TrainingValueDataset with all trajectory states (excluding solved state)
@@ -410,7 +411,7 @@ class TrainingValueDataset(Dataset):
         cube_for_scramble = Cube()
 
         # Generate trajectories
-        for traj_idx in tqdm(range(n_trajectories), desc="Generating trajectories", leave=False):
+        for traj_idx in tqdm(range(n_trajectories), desc="Generating trajectories", leave=False, position=tqdm_position):
             # Start from solved state
             cube = Cube()
             trajectory_cubes = []

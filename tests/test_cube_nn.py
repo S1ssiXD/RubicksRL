@@ -10,6 +10,7 @@ from cube_nn import (
     CubeValueNNConv,
     CubeValueResNet,
     CubeValueTransformer,
+    CubeValueTransformerV2,
     NNValueFunctionType
 )
 
@@ -47,6 +48,7 @@ def test_cube_to_tensor_conversion(cube_to_tensor, expected_shape):
     CubeValueNNConv(),
     CubeValueResNet(),
     CubeValueTransformer(),
+    CubeValueTransformerV2()
 ])
 def model(request):
     """Fixture that provides different cube value neural network models."""

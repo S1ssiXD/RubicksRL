@@ -13,7 +13,7 @@ import os
 import time
 
 
-def train_on_value_dataset(net: nn.Module, dataset: TrainingValueDataset, optimizer: optim.Optimizer, batch_size: int = 50, n_epochs: int = 10, device="cpu") -> float:
+def train_on_value_dataset(net: nn.Module, dataset: TrainingValueDataset, optimizer: optim.Optimizer, batch_size: int = 50, n_epochs: int = 10, device="cpu", tqdm_position: int = 0) -> float:
     criterion = nn.MSELoss()
     net.to(device)
 
@@ -30,7 +30,7 @@ def train_on_value_dataset(net: nn.Module, dataset: TrainingValueDataset, optimi
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
                                 pin_memory=use_pin_memory, num_workers=0)
         losses = []
-        for inputs, targets in dataloader:
+        for inputs, targets in tqdm(dataloader, desc="Initial evaluation", leave=False, position=tqdm_position):
             # If dataset is already on GPU, these are no-ops
             inputs, targets = inputs.to(device, non_blocking=True), targets.to(
                 device, non_blocking=True)
@@ -38,6 +38,7 @@ def train_on_value_dataset(net: nn.Module, dataset: TrainingValueDataset, optimi
             loss = criterion(outputs, targets)
             losses.append(loss.item())
         initial_loss = sum(losses) / len(losses)
+    print(f"Initial Loss: {initial_loss}")
 
     # Training
     net.train()
@@ -46,7 +47,7 @@ def train_on_value_dataset(net: nn.Module, dataset: TrainingValueDataset, optimi
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True,
                                 pin_memory=use_pin_memory, num_workers=0)
         losses_epoch = []
-        for inputs, targets in tqdm(dataloader, desc=f"Epoch {epoch + 1}/{n_epochs}", leave=False):
+        for inputs, targets in tqdm(dataloader, desc=f"Epoch {epoch + 1}/{n_epochs}", leave=False, position=tqdm_position):
             inputs, targets = inputs.to(device, non_blocking=True), targets.to(
                 device, non_blocking=True)
             optimizer.zero_grad()

@@ -368,7 +368,7 @@ class CubeValueTransformer(CubeValueNN):
     Each of the 54 stickers is treated as a token with 6-dimensional features (one-hot color).
     """
 
-    def __init__(self, embed_dim: int = 1024, num_heads: int = 16, num_layers: int = 3, dim_feedforward: int = 1024):
+    def __init__(self, embed_dim: int = 512, num_heads: int = 4, num_layers: int = 2, dim_feedforward: int = 512):
         """
         Initializes the CubeValueTransformer model.
 
