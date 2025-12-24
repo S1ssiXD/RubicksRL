@@ -1,16 +1,8 @@
 import torch
 from torch import nn, optim
-from torch.utils.data import Dataset, DataLoader, RandomSampler
-from typing import List, Dict, Tuple, Optional
-from cube import Cube
-from cube_nn import CubeToTensor
+from torch.utils.data import DataLoader
 from cube_datasets import TrainingValueDataset
-# from evaluation import Evaluator, full_evaluation
-from solvers import nn_solver
 from tqdm import tqdm
-
-import os
-import time
 
 
 def train_on_value_dataset(net: nn.Module, dataset: TrainingValueDataset, optimizer: optim.Optimizer, batch_size: int = 50, n_epochs: int = 10, device="cpu", tqdm_position: int = 0) -> float:
@@ -18,9 +10,8 @@ def train_on_value_dataset(net: nn.Module, dataset: TrainingValueDataset, optimi
     net.to(device)
 
     # Check if dataset is already on target device
-    dataset_on_gpu = (hasattr(dataset, '_inputs') and dataset._inputs is not None and
-                      dataset._inputs.device.type == 'cuda')
-    use_pin_memory = (device != "cpu" and not dataset_on_gpu)
+    dataset_on_cuda = dataset._inputs.device.type == 'cuda'
+    use_pin_memory = (device != "cpu" and not dataset_on_cuda)
 
     # Initial evaluation: loss before training
     net.eval()

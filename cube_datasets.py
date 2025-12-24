@@ -1,12 +1,12 @@
 import numpy as np
 import torch
-from typing import Optional, Dict, List, Tuple
-from cube import Cube, moves
+from typing import Optional, Dict
+from cube import Cube
 from tqdm import tqdm
 from torch.utils.data import Dataset
-from protocols import CubeToTensor, ValueFunction
-from cube_nn import CubeValueNN
+from cube_nn import CubeValueNN, CubeToTensor
 import random
+import os
 
 
 CubeDataset = Dict[Cube, float]
@@ -72,6 +72,9 @@ def save_cube_dataset(cubes: CubeDataset, path: str) -> None:
         cubes (CubeDataset): The dataset to save.
         path (str): The file path where the dataset will be saved.
     """
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
     with open(path, 'wb') as f:
         torch.save(cubes, f)
 

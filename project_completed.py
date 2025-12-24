@@ -3,7 +3,7 @@ The project can be considered complete if all benchmarks pass successfully. """
 from cube_nn import CubeValueResNet
 import torch
 from cube import Cube
-from solvers import AStarSolver
+from solvers import SuperSolver
 from cube_nn import NNValueFunctionType
 from tqdm import tqdm
 import time
@@ -32,7 +32,7 @@ net = net.to("cuda")
 net.set_value_function_type(NNValueFunctionType.STANDARD)
 
 # Define solver
-solver = AStarSolver(net.as_value_function(), weight=0.25, noise=0.0,
+solver = SuperSolver(net.as_value_function(), weight=0.25, noise=0.0,
                      max_moves=40, max_queue_size=1000000, t_max=60, max_restarts=2, batch_size=25, seed=42, dataset_moves=6)
 
 

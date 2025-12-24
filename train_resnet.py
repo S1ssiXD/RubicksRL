@@ -1,4 +1,4 @@
-from cube_nn import CubeValueResNet, CubeValueTransformer
+from cube_nn import CubeValueResNet
 from training import train_on_value_dataset
 from torch import optim
 import matplotlib.pyplot as plt
@@ -53,15 +53,7 @@ if __name__ == '__main__':
     losses = []
     i = 0
 
-    # Load an existing net to continue training
-    # I0 = 500
-    # net = CubeValueResNet()
-    # net.load_state_dict(torch.load(
-    #     f'temp_models/{name}/cube_value_resnet_iter_{I0}.pth'))
-    # losses = torch.load(f'temp_models/{name}/losses_list_{I0}.pth')
-    # i = I0
-
-    # set the STANDARD value function for speed
+    # set the STANDARD value function
     net.set_value_function_type(NNValueFunctionType.STANDARD)
     net.to(device)
     optimizer = optim.Adam(net.parameters(), lr=0.001)

@@ -2,11 +2,21 @@
 import numpy as np
 import torch
 from torch import nn
-from typing import List
+from typing import List, Protocol
 from cube import Cube
 from abc import abstractmethod, ABC
-from protocols import CubeToTensor, ValueFunction
 from enum import Enum, auto
+
+### ------------ Cube to Tensor Conversion Protocol ------------ ###
+
+
+class CubeToTensor(Protocol):
+    """ Protocol for a function that converts a Cube object to a tensor representation. """
+
+    def __call__(self, cube: Cube | List[Cube]) -> torch.Tensor:
+        """ Converts a Cube object to a tensor representation. """
+        ...
+
 
 ### ------------ Cube to Tensor Conversion Functions ------------ ###
 
@@ -40,8 +50,17 @@ def cube_to_tensor_one_hot(cube: Cube | List[Cube]) -> torch.Tensor:
         cube = [cube]
     return torch.nn.functional.one_hot(torch.tensor(np.vstack([c._cube.flatten() for c in cube]), dtype=torch.long), num_classes=6).to(dtype=torch.float32)
 
+### ------------ Value Function Protocol ------------ ###
 
-### ------------ Neural Network Models ------------ ###
+
+class ValueFunction(Protocol):
+    """ A protocol for a value function that takes a Cube and returns a float value. Must work with batching (list of Cubes).
+
+    ValueFunction(cube: Cube | List[Cube]) -> np.ndarray """
+
+    def __call__(self, cube: Cube | List[Cube]) -> np.ndarray:
+        ...
+
 
 class NNValueFunctionType(Enum):
     STANDARD = auto()
@@ -54,6 +73,8 @@ class NNValueFunctionType(Enum):
     SIMILAR_MAX = auto()
     SIMILAR_MID = auto()
 
+
+### ------------ Neural Network Models ------------ ###
 
 class CubeValueNN(nn.Module, ABC):
     """ Abstract base class for cube value neural networks. """
