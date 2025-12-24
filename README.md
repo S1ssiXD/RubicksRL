@@ -26,3 +26,7 @@ The `SuperSolver` uses the neural network as a heuristic to guide the search to 
 - **Weighted**: Emphasizes heuristic over path length for faster, greedier solutions
 - **Batched inference**: Evaluates multiple states simultaneously on GPU for efficiency
 - **Dataset integration**: Uses precomputed optimal values for close to solved states to improve efficiency
+
+## Setup
+The project was done in Python 3.10.2.
+Best is to create a virtual environment and install the requirements with `pip install requirements.txt`
