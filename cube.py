@@ -577,6 +577,52 @@ class Cube:
         ax.set_aspect('equal')
         plt.show()
 
+    def plot_3d_front_and_back(self) -> None:
+        """Plot the cube in 2D with two viewpoints (front and back)."""
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(
+            12, 6), subplot_kw={'projection': '3d'})
+
+        # Front view
+        self._draw_face(ax1, FACE_IDS[Face.FRONT], np.array([1.5, 0, 0]),
+                        np.array([0, 1, 0]), np.array([0, 0, -1]))
+        self._draw_face(ax1, FACE_IDS[Face.BACK], np.array([-1.5, 0, 0]),
+                        np.array([0, -1, 0]), np.array([0, 0, -1]))
+        self._draw_face(ax1, FACE_IDS[Face.UP], np.array([0, 0, 1.5]),
+                        np.array([0, 1, 0]), np.array([1, 0, 0]))
+        self._draw_face(ax1, FACE_IDS[Face.DOWN], np.array([0, 0, -1.5]),
+                        np.array([0, 1, 0]), np.array([-1, 0, 0]))
+        self._draw_face(ax1, FACE_IDS[Face.LEFT], np.array([0, -1.5, 0]),
+                        np.array([1, 0, 0]), np.array([0, 0, -1]))
+        self._draw_face(ax1, FACE_IDS[Face.RIGHT], np.array([0, 1.5, 0]),
+                        np.array([-1, 0, 0]), np.array([0, 0, -1]))
+
+        ax1.view_init(elev=30, azim=45)
+        ax1.axis('off')
+        ax1.set_aspect('equal')
+        ax1.set_title('Front View', fontsize=14, fontweight='bold')
+
+        # Back view
+        self._draw_face(ax2, FACE_IDS[Face.FRONT], np.array([1.5, 0, 0]),
+                        np.array([0, 1, 0]), np.array([0, 0, -1]))
+        self._draw_face(ax2, FACE_IDS[Face.BACK], np.array([-1.5, 0, 0]),
+                        np.array([0, -1, 0]), np.array([0, 0, -1]))
+        self._draw_face(ax2, FACE_IDS[Face.UP], np.array([0, 0, 1.5]),
+                        np.array([0, 1, 0]), np.array([1, 0, 0]))
+        self._draw_face(ax2, FACE_IDS[Face.DOWN], np.array([0, 0, -1.5]),
+                        np.array([0, 1, 0]), np.array([-1, 0, 0]))
+        self._draw_face(ax2, FACE_IDS[Face.LEFT], np.array([0, -1.5, 0]),
+                        np.array([1, 0, 0]), np.array([0, 0, -1]))
+        self._draw_face(ax2, FACE_IDS[Face.RIGHT], np.array([0, 1.5, 0]),
+                        np.array([-1, 0, 0]), np.array([0, 0, -1]))
+
+        ax2.view_init(elev=30, azim=225)  # Back view (180 degrees from front)
+        ax2.axis('off')
+        ax2.set_aspect('equal')
+        ax2.set_title('Back View', fontsize=14, fontweight='bold')
+
+        plt.tight_layout()
+        plt.show()
+
 
 def main():
     c = Cube()
