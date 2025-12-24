@@ -5,12 +5,8 @@ from cube import Cube
 from cube_nn import (
     cube_to_tensor_direct,
     cube_to_tensor_one_hot,
-    cube_to_tensor_one_hot_similar,
     CubeValueNNFC,
-    CubeValueNNConv,
     CubeValueResNet,
-    CubeValueTransformer,
-    CubeValueTransformerV2,
     NNValueFunctionType
 )
 
@@ -20,7 +16,6 @@ from cube_nn import (
 @pytest.mark.parametrize("cube_to_tensor,expected_shape", [
     (cube_to_tensor_direct, (1, 54)),
     (cube_to_tensor_one_hot, (1, 54, 6)),
-    (cube_to_tensor_one_hot_similar, (1, 24, 54, 6)),
 ])
 def test_cube_to_tensor_conversion(cube_to_tensor, expected_shape):
     # Test single cube
@@ -45,10 +40,7 @@ def test_cube_to_tensor_conversion(cube_to_tensor, expected_shape):
 @pytest.fixture(params=[
     CubeValueNNFC(cube_to_tensor_direct, hidden_size=[128, 64]),
     CubeValueNNFC(cube_to_tensor_one_hot, hidden_size=[256, 256, 64]),
-    CubeValueNNConv(),
     CubeValueResNet(),
-    CubeValueTransformer(),
-    CubeValueTransformerV2()
 ])
 def model(request):
     """Fixture that provides different cube value neural network models."""
